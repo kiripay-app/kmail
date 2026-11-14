@@ -27,7 +27,7 @@ const mib = z.number().int().min(0).max(10_000_000);
 const publicAdmin = (a: Admin) => ({ id: a.id, username: a.username, totp: !!a.totp_enabled, disabled: !!a.disabled, locked: auth.isLocked(a), lastLogin: a.last_login, createdAt: a.created_at });
 
 export async function buildServer(backend: MailAdmin, opts: { logger?: boolean } = {}) {
-  const app = Fastify({ logger: opts.logger ?? false, trustProxy: true, bodyLimit: 64 * 1024 });
+  const app = Fastify({ logger: opts.logger ?? false, trustProxy: config.trustProxy, bodyLimit: 64 * 1024 });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
 

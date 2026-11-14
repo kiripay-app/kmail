@@ -3,6 +3,11 @@ import { z } from "zod";
 import { COOKIE, requireAuth, setSessionCookie } from "../auth.js";
 import { isAuthFailure, newClient } from "../imap.js";
 import { createSession, destroySession } from "../session.js";
+import { Throttle } from "../throttle.js";
+
+// Guard Dovecot: mailcow bans an IP after repeated failed logins, and every webmail login comes from this one container.
+const perIpUser = new Throttle(5, 15 * 60_000), perUser = new Throttle(20, 15 * 60_000);
+setInterval(() => { perIpUser.sweep(); perUser.sweep(); }, 60_000).unref();
 
 const Login = z.object({ email: z.string().email().max(254), password: z.string().min(1).max(512) });
 
@@ -12,17 +17,20 @@ export async function authRoutes(app: FastifyInstance) {
     const body = Login.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_input" });
     const { email, password } = body.data;
+    const k1 = `${req.ip}|${email.toLowerCase()}`, k2 = email.toLowerCase();
+    if (perIpUser.blocked(k1) || perUser.blocked(k2)) return reply.code(429).send({ error: "too_many_attempts" });
 
     // Verify against Dovecot, the single source of truth for mailbox credentials.
     const c = newClient({ user: email, pass: password });
     try {
       await c.connect();
     } catch (e) {
-      if (isAuthFailure(e)) return reply.code(401).send({ error: "bad_credentials" });
+      if (isAuthFailure(e)) { perIpUser.fail(k1); perUser.fail(k2); return reply.code(401).send({ error: "bad_credentials" }); }
       req.log.error({ err: e }, "imap login failed");
       return reply.code(502).send({ error: "mail_server_unreachable" });
     }
     await c.logout().catch(() => c.close());
+    perIpUser.clear(k1);
 
     const s = createSession(email.toLowerCase(), password);
     setSessionCookie(reply, s.id);

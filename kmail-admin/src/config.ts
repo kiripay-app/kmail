@@ -27,6 +27,7 @@ export const config = {
   issuer: process.env.ADMIN_ISSUER ?? "KMail Admin",
   idleMs: Number(process.env.ADMIN_IDLE_MINUTES ?? 30) * 60_000,
   absoluteMs: Number(process.env.ADMIN_SESSION_HOURS ?? 8) * 3_600_000,
+  trustProxy: (process.env.TRUST_PROXY ?? "loopback,linklocal,uniquelocal").split(",").map((s) => s.trim()).filter(Boolean),
   maxFailures: 5,
   rateMax: Number(process.env.ADMIN_RATE_MAX ?? 10),
   lockMs: Number(process.env.ADMIN_LOCK_MINUTES ?? 15) * 60_000,

@@ -26,5 +26,7 @@ export const config = {
   invites: (["auto", "always", "never"].includes(process.env.KMAIL_INVITES ?? "") ? process.env.KMAIL_INVITES : "auto") as "auto" | "always" | "never",
   cookieSecure: bool(process.env.COOKIE_SECURE, true),
   sessionTtlMs: Number(process.env.SESSION_TTL_MINUTES ?? 480) * 60_000,
+  // Only these addresses may tell us the real client address (X-Forwarded-For). Default: private/Docker ranges.
+  trustProxy: (process.env.TRUST_PROXY ?? "loopback,linklocal,uniquelocal").split(",").map((s) => s.trim()).filter(Boolean),
   pageSize: 50,
 };

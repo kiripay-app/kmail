@@ -37,3 +37,7 @@ Create an event, add a colleague as an attendee, and save. They should receive e
 
 Tested: the panel's backend (23 tests, including RFC 6238 vectors, lockout, replay, recovery codes, audit) and the browser flow against the in-memory backend, and the mailcow adapter against a fake server built from mailcow's OpenAPI file.
 Not yet tested: the real mailcow API (response shapes, the internal HTTPS address, queue and log formats), the Docker image and nginx route.
+
+## Before real users
+
+Read `docs/SECURITY.md` and do its deployment list (fail2ban whitelist for the Docker network, admin IP allow list, session secret).

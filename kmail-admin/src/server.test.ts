@@ -158,3 +158,12 @@ test("logout ends the session", async () => {
   await j.call("POST", "/logout", {});
   assert.equal((await j.call("GET", "/domains")).status, 401);
 });
+
+test("IP allow list cannot be dodged with a forged X-Forwarded-For", async () => {
+  config.allowCidrs = ["10.0.0.0/8"];
+  const r = (remoteAddress: string, xff: string) => app.inject({ method: "GET", url: B + "/me", remoteAddress, headers: { "x-forwarded-for": xff } });
+  assert.equal((await r("203.0.113.5", "10.1.1.1")).statusCode, 403, "public peer claiming to be 10.x is still blocked");
+  assert.equal((await r("172.22.1.5", "10.1.1.1")).statusCode, 401, "the proxy may report the real client, and 10.x is allowed");
+  assert.equal((await r("172.22.1.5", "198.51.100.7")).statusCode, 403, "real client outside the list is blocked");
+  config.allowCidrs = [];
+});

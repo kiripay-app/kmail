@@ -7,7 +7,7 @@ import { calendarRoutes } from "./routes/calendar.js";
 import { contactRoutes } from "./routes/contacts.js";
 import { mailRoutes } from "./routes/mail.js";
 
-const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
+const app = Fastify({ logger: true, trustProxy: config.trustProxy, bodyLimit: 1024 * 1024 });
 
 // Treat an empty JSON body (e.g. a bare POST /logout) as {} instead of a 400.
 app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
