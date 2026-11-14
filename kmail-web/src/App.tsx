@@ -1,34 +1,32 @@
-import { useState } from "react";
-import { Button, Tab, TabList, Text } from "@fluentui/react-components";
+import { useEffect, useState } from "react";
+import { Button, Spinner, Tab, TabList, Text } from "@fluentui/react-components";
+import { api } from "./api";
+import { Login } from "./Login";
+import { MailView } from "./MailView";
 
 type View = "mail" | "calendar" | "contacts";
 
-// Phase 1 placeholder: Outlook-style shell (top bar, folder pane, list, reading pane).
 export function App() {
+  const [email, setEmail] = useState<string | null | undefined>(undefined); // undefined = still checking
   const [view, setView] = useState<View>("mail");
+
+  useEffect(() => { api.me().then((m) => setEmail(m.email)).catch(() => setEmail(null)); }, []);
+
+  if (email === undefined) return <div style={{ height: "100%", display: "grid", placeItems: "center" }}><Spinner /></div>;
+  if (email === null) return <Login onDone={setEmail} />;
+
   return (
-    <div style={{ display: "grid", gridTemplateRows: "48px 1fr", height: "100%" }}>
+    <div style={{ display: "grid", gridTemplateRows: "48px 1fr", height: "100%", minHeight: 0 }}>
       <header style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", background: "#0f6cbd", color: "#fff" }}>
         <Text weight="semibold" size={500} style={{ color: "#fff" }}>KMail</Text>
         <TabList selectedValue={view} onTabSelect={(_, d) => setView(d.value as View)}>
-          <Tab value="mail" style={{ color: "#fff" }}>Mail</Tab>
-          <Tab value="calendar" style={{ color: "#fff" }}>Calendar</Tab>
-          <Tab value="contacts" style={{ color: "#fff" }}>Contacts</Tab>
+          {(["mail", "calendar", "contacts"] as View[]).map((v) => <Tab key={v} value={v} style={{ color: "#fff", textTransform: "capitalize" }}>{v}</Tab>)}
         </TabList>
+        <div style={{ flex: 1 }} />
+        <Text style={{ color: "#fff" }}>{email}</Text>
+        <Button appearance="outline" size="small" style={{ color: "#fff", borderColor: "#fff" }} onClick={() => api.logout().finally(() => setEmail(null))}>Sign out</Button>
       </header>
-      {view === "mail" && (
-        <main style={{ display: "grid", gridTemplateColumns: "220px 340px 1fr", minHeight: 0 }}>
-          <nav style={{ padding: 12, borderRight: "1px solid #e0e0e0" }}>
-            <Button appearance="primary">New message</Button>
-            <ul style={{ listStyle: "none", padding: 0, marginTop: 16 }}>
-              {["Inbox", "Drafts", "Sent", "Junk", "Trash"].map((f) => <li key={f} style={{ padding: "6px 0" }}>{f}</li>)}
-            </ul>
-          </nav>
-          <section style={{ borderRight: "1px solid #e0e0e0", padding: 12 }}>Message list (todo)</section>
-          <section style={{ padding: 12 }}>Reading pane (todo)</section>
-        </main>
-      )}
-      {view !== "mail" && <main style={{ padding: 16 }}>{view} (todo, phase 3)</main>}
+      {view === "mail" ? <MailView email={email} onSignedOut={() => setEmail(null)} /> : <main style={{ padding: 24 }}><Text size={500} style={{ textTransform: "capitalize" }}>{view}</Text><p>Coming in phase 3.</p></main>}
     </div>
   );
 }

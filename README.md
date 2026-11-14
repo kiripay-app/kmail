@@ -4,8 +4,7 @@ KMail is a GPLv3 fork of [mailcow: dockerized](https://github.com/mailcow/mailco
 replaces the SOGo web interface with an Outlook-style webmail and calendar, plus an admin panel
 protected by two-factor authentication.
 
-> **Status: early scaffolding (phase 1).** The mail core is unmodified mailcow. The KMail webmail,
-> API and admin panel are starter projects only and not ready for production use.
+> **Status: phase 2 (webmail MVP), early and untested on a real mailcow stack.** The mail core is unmodified mailcow. KMail webmail (login, folders, list, search, read, reply, forward, send with attachments, flag, move, delete) and its API work against a stock Dovecot; calendar, contacts and the admin panel are not built yet.
 
 ## What is different from mailcow
 

@@ -1,9 +1,32 @@
+import cookie from "@fastify/cookie";
+import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
+import { config } from "./config.js";
+import { authRoutes } from "./routes/auth.js";
+import { mailRoutes } from "./routes/mail.js";
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
+
+// Treat an empty JSON body (e.g. a bare POST /logout) as {} instead of a 400.
+app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
+  if (body === "") return done(null, {});
+  try {
+    done(null, JSON.parse(body as string));
+  } catch {
+    done(Object.assign(new Error("invalid json"), { statusCode: 400 }), undefined);
+  }
+});
+
+await app.register(cookie);
+await app.register(rateLimit, { global: false });
 
 app.get("/api/health", async () => ({ status: "ok", service: "kmail-api" }));
+await app.register(authRoutes);
+await app.register(mailRoutes);
 
-// Planned: /api/auth (IMAP login), /api/mail/*, /api/calendar/*, /api/contacts/*
-const port = Number(process.env.PORT ?? 3000);
-app.listen({ port, host: "0.0.0.0" });
+app.addHook("onSend", async (_req, reply) => {
+  reply.header("cache-control", "no-store");
+  reply.header("x-content-type-options", "nosniff");
+});
+
+await app.listen({ port: config.port, host: "0.0.0.0" });
