@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Button, Field, Input, MessageBar, MessageBarBody, Textarea } from "@fluentui/react-components";
 import { Attach24Regular, Dismiss24Regular, Send24Regular } from "@fluentui/react-icons";
 import { api } from "./api";
+import { AddressInput } from "./AddressInput";
 
 export interface Prefill { to?: string; cc?: string; subject?: string; body?: string }
 
@@ -59,9 +60,9 @@ export function Compose({ prefill, onClose, onSent }: { prefill: Prefill; onClos
       <div style={{ padding: 12, display: "grid", gap: 8, overflow: "auto" }}>
         {error && <MessageBar intent="error"><MessageBarBody>{error}</MessageBarBody></MessageBar>}
         <Field label="To" hint="Separate addresses with commas">
-          <Input value={to} onChange={(_, d) => setTo(d.value)} contentAfter={!showCc ? <Button size="small" appearance="transparent" onClick={() => setShowCc(true)}>Cc</Button> : undefined} />
+          <AddressInput value={to} onChange={setTo} after={!showCc ? <Button size="small" appearance="transparent" onClick={() => setShowCc(true)}>Cc</Button> : undefined} />
         </Field>
-        {showCc && <Field label="Cc"><Input value={cc} onChange={(_, d) => setCc(d.value)} /></Field>}
+        {showCc && <Field label="Cc"><AddressInput value={cc} onChange={setCc} /></Field>}
         <Field label="Subject"><Input value={subject} onChange={(_, d) => setSubject(d.value)} /></Field>
         <Textarea aria-label="Message" resize="vertical" rows={10} value={text} onChange={(_, d) => setText(d.value)} />
         {files.length > 0 && (

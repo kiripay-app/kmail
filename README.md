@@ -4,7 +4,7 @@ KMail is a GPLv3 fork of [mailcow: dockerized](https://github.com/mailcow/mailco
 replaces the SOGo web interface with an Outlook-style webmail and calendar, plus an admin panel
 protected by two-factor authentication.
 
-> **Status: phase 3 (calendar and contacts), early and untested on a real mailcow stack.** The mail core is unmodified mailcow. KMail's webmail, calendar (day, week, month, repeating events, reminders) and contacts work against stock Dovecot and a standards-based CalDAV server; SOGo stays as the headless calendar/contacts/ActiveSync backend so phones keep syncing. Invitations, shared calendars, the Carbonio import and the admin panel are not built yet.
+> **Status: phase 3b (invitations, contacts suggestions, import), early and untested on a real mailcow stack.** The mail core is unmodified mailcow. KMail's webmail, calendar (day, week, month, repeating events, reminders, meeting invitations and replies) and contacts work against stock Dovecot and a standards-based CalDAV server; SOGo stays as the headless calendar/contacts/ActiveSync backend so phones keep syncing. Shared calendars and the admin panel are not built yet.
 
 ## What is different from mailcow
 

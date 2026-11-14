@@ -12,3 +12,13 @@ test("vCard round-trips and update preserves unknown properties", () => {
   assert.equal(parseCard(out)!.phones.length, 0);
 });
 test("garbage vCard does not throw", () => assert.equal(parseCard("not a vcard"), undefined));
+
+import { splitCards } from "./vcard.js";
+test("vcf import splits many cards, adds missing UID and FN", () => {
+  const vcf = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A One\r\nUID:u1\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:3.0\r\nN:Two;B;;;\r\nEND:VCARD\r\njunk";
+  const out = splitCards(vcf);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].uid, "u1");
+  assert.ok(out[1].uid.length > 10);
+  assert.match(out[1].data, /FN:/);
+});

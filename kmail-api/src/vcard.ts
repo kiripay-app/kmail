@@ -63,3 +63,22 @@ export function parseCard(data: string): Contact | undefined {
     return undefined;
   }
 }
+
+/** Split a multi-contact .vcf into single-contact vCards, giving each a UID if it lacks one. */
+export function splitCards(vcf: string): { uid: string; data: string }[] {
+  const parts = vcf.replace(/\r?\n/g, "\r\n").match(/BEGIN:VCARD[\s\S]*?END:VCARD/gi) ?? [];
+  const out: { uid: string; data: string }[] = [];
+  for (const raw of parts) {
+    try {
+      const card = new ICAL.Component(ICAL.parse(raw));
+      let uid = String(card.getFirstPropertyValue("uid") ?? "");
+      if (!uid) {
+        uid = crypto.randomUUID();
+        card.addPropertyWithValue("uid", uid);
+      }
+      if (!card.hasProperty("fn")) card.addPropertyWithValue("fn", "(no name)");
+      out.push({ uid, data: card.toString() });
+    } catch { /* skip unreadable entry */ }
+  }
+  return out;
+}

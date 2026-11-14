@@ -21,6 +21,9 @@ export const config = {
     caldavUrl: process.env.CALDAV_URL ?? "http://sogo:20000/SOGo/dav/",
     carddavUrl: process.env.CARDDAV_URL ?? process.env.CALDAV_URL ?? "http://sogo:20000/SOGo/dav/",
   },
+  // auto: send invitation emails only if the calendar server does not schedule by itself (SOGo does).
+  // always / never override the detection.
+  invites: (["auto", "always", "never"].includes(process.env.KMAIL_INVITES ?? "") ? process.env.KMAIL_INVITES : "auto") as "auto" | "always" | "never",
   cookieSecure: bool(process.env.COOKIE_SECURE, true),
   sessionTtlMs: Number(process.env.SESSION_TTL_MINUTES ?? 480) * 60_000,
   pageSize: 50,

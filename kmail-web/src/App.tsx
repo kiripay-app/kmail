@@ -29,7 +29,7 @@ export function App() {
         <Button appearance="outline" size="small" style={{ color: "#fff", borderColor: "#fff" }} onClick={() => api.logout().finally(() => setEmail(null))}>Sign out</Button>
       </header>
       {view === "mail" && <MailView email={email} onSignedOut={() => setEmail(null)} />}
-      {view === "calendar" && <CalendarView onSignedOut={() => setEmail(null)} />}
+      {view === "calendar" && <CalendarView me={email} onSignedOut={() => setEmail(null)} />}
       {view === "contacts" && <ContactsView onSignedOut={() => setEmail(null)} />}
     </div>
   );

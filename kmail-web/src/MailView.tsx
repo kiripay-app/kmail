@@ -4,7 +4,7 @@ import {
   ArrowForward24Regular, ArrowReply24Regular, ArrowReplyAll24Regular, Delete24Regular, DocumentEdit24Regular, Flag24Filled, Flag24Regular,
   Folder24Regular, Mail24Regular, MailInbox24Regular, MailUnread24Regular, Search24Regular, Send24Regular, Warning24Regular,
 } from "@fluentui/react-icons";
-import { Addr, api, AuthError, Folder, MsgDetail, MsgSummary } from "./api";
+import { Addr, api, ApiError, AuthError, Folder, InviteAction, MsgDetail, MsgSummary } from "./api";
 import { Compose, Prefill } from "./Compose";
 
 const folderIcon = (f: Folder) =>
@@ -20,6 +20,12 @@ function fmtDate(iso: string | null) {
 }
 const htmlToText = (html: string) => new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
 const quote = (d: MsgDetail) => `\n\nOn ${d.date ? new Date(d.date).toLocaleString() : ""}, ${d.from.map(short).join(", ")} wrote:\n` + htmlToText(d.html).trim().split("\n").map((l) => `> ${l}`).join("\n");
+const fmtWhen = (i: { start: string; end: string; allDay: boolean }) => {
+  const a = new Date(i.allDay ? `${i.start}T00:00:00` : i.start), b = new Date(i.allDay ? `${i.end}T00:00:00` : i.end);
+  return i.allDay ? a.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : `${a.toLocaleString([], { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} to ${b.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+};
+const STATUS_WORD: Record<string, string> = { ACCEPTED: "accepted", TENTATIVE: "tentatively accepted", DECLINED: "declined", "NEEDS-ACTION": "not replied" };
 const rePrefix = (s: string, p: string) => (new RegExp(`^${p}:`, "i").test(s) ? s : `${p}: ${s}`);
 
 export function MailView({ email, onSignedOut }: { email: string; onSignedOut: () => void }) {
@@ -37,6 +43,8 @@ export function MailView({ email, onSignedOut }: { email: string; onSignedOut: (
   const [images, setImages] = useState(false);
   const [error, setError] = useState("");
   const [compose, setCompose] = useState<Prefill | null>(null);
+  const [inviteNote, setInviteNote] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
   const listReq = useRef(0);
 
   const fail = useCallback((e: unknown) => {
@@ -73,7 +81,7 @@ export function MailView({ email, onSignedOut }: { email: string; onSignedOut: (
 
   const selected = list.find((m) => m.uid === uid);
   const pickFolder = (p: string) => { setFolder(p); setPage(1); setUid(null); setImages(false); setSearch(""); setActiveSearch(""); };
-  const pick = (m: MsgSummary) => { setImages(false); setUid(m.uid); };
+  const pick = (m: MsgSummary) => { setImages(false); setInviteNote(""); setUid(m.uid); };
 
   async function act(fn: () => Promise<unknown>, clear = false) {
     try { await fn(); if (clear) { setUid(null); } await Promise.all([loadList(), loadFolders()]); } catch (e) { fail(e); }
@@ -83,6 +91,21 @@ export function MailView({ email, onSignedOut }: { email: string; onSignedOut: (
     cc: all ? [...detail.to, ...detail.cc].map((a) => a.address).filter((a) => a && a.toLowerCase() !== email).join(", ") : undefined,
     subject: rePrefix(detail.subject, "Re"), body: quote(detail),
   });
+
+  async function inviteAct(action: InviteAction) {
+    if (!detail) return;
+    setInviteBusy(true); setInviteNote("");
+    try {
+      const r = await api.respondInvitation(folder, detail.uid, action);
+      setInviteNote(action === "APPLY_REPLY" ? "Updated the event in your calendar." : action === "APPLY_CANCEL" ? "Removed the meeting from your calendar."
+        : `You responded "${action === "TENTATIVE" ? "tentative" : action.toLowerCase()}".${action === "DECLINED" ? "" : " It is in your calendar."}${r.replied ? " The organiser was told." : ""}`);
+    } catch (e) {
+      if (e instanceof AuthError) return onSignedOut();
+      const code = e instanceof ApiError ? e.code : "";
+      setInviteNote(code === "sender_mismatch" ? "This message does not come from the person it names, so it was not applied."
+        : code === "event_not_in_calendar" ? "That meeting is not in your calendar." : "Could not update your calendar.");
+    } finally { setInviteBusy(false); }
+  }
 
   const pages = Math.max(1, Math.ceil(total / 50));
   const dis = !detail;
@@ -152,6 +175,29 @@ export function MailView({ email, onSignedOut }: { email: string; onSignedOut: (
                   {detail.attachments.map((a) => <a key={a.index} href={api.attachmentUrl(folder, detail.uid, a.index)} download style={{ padding: "4px 10px", border: "1px solid #d1d1d1", borderRadius: 4, fontSize: 13, textDecoration: "none", color: "#0f6cbd" }}>{a.filename} ({Math.ceil(a.size / 1024)} KB)</a>)}
                 </div>
               )}
+              {detail.invitation && (() => {
+                const i = detail.invitation;
+                return (
+                  <div role="region" aria-label="Meeting invitation" style={{ marginTop: 10, border: "1px solid #c7e0f4", borderLeft: "4px solid #0f6cbd", background: "#f5faff", borderRadius: 4, padding: "10px 14px", display: "grid", gap: 6 }}>
+                    <strong>{i.method === "CANCEL" ? "Meeting canceled: " : i.method === "REPLY" ? "Meeting response: " : "Meeting invitation: "}{i.title}</strong>
+                    <span style={{ fontSize: 13 }}>{fmtWhen(i)}{i.location ? ` · ${i.location}` : ""}</span>
+                    {i.method === "REQUEST" && <span style={{ fontSize: 13, color: "#605e5c" }}>Organised by {i.organizer.name || i.organizer.email}{i.attendeeCount > 1 ? ` · ${i.attendeeCount} people` : ""}{i.myStatus && i.myStatus !== "NEEDS-ACTION" ? ` · you have ${STATUS_WORD[i.myStatus] ?? i.myStatus.toLowerCase()}` : ""}</span>}
+                    {i.method === "REPLY" && <span style={{ fontSize: 13 }}>{i.attendees.map((a) => `${a.name || a.email} ${STATUS_WORD[a.status] ?? a.status.toLowerCase()}`).join(", ")}</span>}
+                    {!inviteNote && (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {i.method === "REQUEST" && (<>
+                          <Button appearance="primary" size="small" disabled={inviteBusy} onClick={() => inviteAct("ACCEPTED")}>Accept</Button>
+                          <Button size="small" disabled={inviteBusy} onClick={() => inviteAct("TENTATIVE")}>Tentative</Button>
+                          <Button size="small" disabled={inviteBusy} onClick={() => inviteAct("DECLINED")}>Decline</Button>
+                        </>)}
+                        {i.method === "REPLY" && <Button size="small" disabled={inviteBusy} onClick={() => inviteAct("APPLY_REPLY")}>Update the event in my calendar</Button>}
+                        {i.method === "CANCEL" && <Button size="small" disabled={inviteBusy} onClick={() => inviteAct("APPLY_CANCEL")}>Remove from my calendar</Button>}
+                      </div>
+                    )}
+                    {inviteNote && <span role="status" style={{ fontSize: 13, color: /not|Could/.test(inviteNote) ? "#c50f1f" : "#107c10" }}>{inviteNote}</span>}
+                  </div>
+                );
+              })()}
               {detail.blockedRemoteImages && !images && (
                 <MessageBar style={{ marginTop: 8 }}><MessageBarBody>Pictures from the internet were blocked to protect your privacy. <Button size="small" appearance="transparent" style={{ color: "#0f6cbd", textDecoration: "underline" }} onClick={() => setImages(true)}>Show pictures</Button></MessageBarBody></MessageBar>
               )}

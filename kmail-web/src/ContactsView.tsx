@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Textarea } from "@fluentui/react-components";
-import { PersonAdd24Regular, Search24Regular } from "@fluentui/react-icons";
+import { ArrowUpload24Regular, PersonAdd24Regular, Search24Regular } from "@fluentui/react-icons";
 import { api, ApiError, AuthError, Book, Contact } from "./api";
 
 const lines = (s: string) => s.split(/[\n,;]/).map((x) => x.trim()).filter(Boolean);
@@ -21,6 +21,8 @@ export function ContactsView({ onSignedOut }: { onSignedOut: () => void }) {
   const [form, setForm] = useState<Form>(blank);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
 
   const fail = useCallback((e: unknown, msg: string) => (e instanceof AuthError ? onSignedOut() : setError(msg)), [onSignedOut]);
   useEffect(() => { api.books().then(setBooks).catch((e) => { setBooks([]); fail(e, "Could not load your address books."); }); }, [fail]);
@@ -53,12 +55,26 @@ export function ContactsView({ onSignedOut }: { onSignedOut: () => void }) {
     try { await api.deleteContact(selected.book, selected.href, selected.etag); setSelected(null); await load(); } catch (e) { fail(e, "Could not delete the contact."); } finally { setBusy(false); }
   }
 
+  async function importFile(file: File) {
+    if (!books?.[0]) return;
+    if (file.size > 10 * 1024 * 1024) return setError("That file is over 10 MB.");
+    setNote(""); setError("");
+    try {
+      const r = await api.importVcf(books[0].id, await file.text());
+      setNote(`Imported ${r.imported} contact${r.imported === 1 ? "" : "s"}${r.skipped ? `, ${r.skipped} already there` : ""}${r.failed ? `, ${r.failed} failed` : ""}.`);
+      await load();
+    } catch (e) { fail(e, "Could not import that file. Is it a .vcf contacts export?"); }
+  }
+
   if (!books) return <div style={{ padding: 24 }}><Spinner /></div>;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", height: "100%", minHeight: 0 }}>
       <section style={{ borderRight: "1px solid #e0e0e0", display: "grid", gridTemplateRows: "auto 1fr", minHeight: 0 }}>
         <div style={{ padding: 12, display: "grid", gap: 8, borderBottom: "1px solid #e0e0e0" }}>
           <Button appearance="primary" icon={<PersonAdd24Regular />} disabled={!books.length} onClick={() => select("new")}>New contact</Button>
+          <input ref={importInput} type="file" accept=".vcf,text/vcard,text/x-vcard" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importFile(f); }} />
+          <Button appearance="subtle" icon={<ArrowUpload24Regular />} disabled={!books.length} onClick={() => importInput.current?.click()}>Import .vcf file</Button>
+          {note && <div role="status" style={{ fontSize: 13, color: "#107c10" }}>{note}</div>}
           <form onSubmit={(e) => { e.preventDefault(); setActive(search.trim()); }}>
             <Input style={{ width: "100%" }} contentBefore={<Search24Regular />} placeholder="Search contacts" value={search} onChange={(_, d) => { setSearch(d.value); if (!d.value) setActive(""); }} />
           </form>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarBody, Select, Switch, Textarea } from "@fluentui/react-components";
 import { ApiError, api, Cal, CalEvent, EventInput, Recurrence } from "./api";
+import { AddressInput } from "./AddressInput";
 
 export interface Draft { event?: CalEvent; start: Date; end: Date; allDay: boolean }
 
@@ -11,8 +12,14 @@ const dayBefore = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate
 const dayAfter = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
 const parseLocal = (v: string, dateOnly: boolean) => (dateOnly ? new Date(`${v}T00:00:00`) : new Date(v));
 
-export function EventDialog({ draft, calendars, defaultCalendar, onClose, onChanged }: { draft: Draft; calendars: Cal[]; defaultCalendar: string; onClose: () => void; onChanged: () => void }) {
+const STATUS: Record<string, string> = { ACCEPTED: "accepted", TENTATIVE: "tentative", DECLINED: "declined", "NEEDS-ACTION": "no reply yet" };
+
+export function EventDialog({ draft, calendars, defaultCalendar, me, onClose, onChanged }: { draft: Draft; calendars: Cal[]; defaultCalendar: string; me: string; onClose: () => void; onChanged: () => void }) {
   const ev = draft.event;
+  // Someone else organised this meeting: show it read-only, with Accept / Tentative / Decline.
+  const invitee = Boolean(ev && ev.organizer && ev.organizer.toLowerCase() !== me.toLowerCase() && ev.attendees.length);
+  const myStatus = ev?.attendees.find((a) => a.email.toLowerCase() === me.toLowerCase())?.status;
+  const [attendees, setAttendees] = useState((ev?.attendees ?? []).map((a) => a.email).join(", "));
   const [title, setTitle] = useState(ev?.title ?? "");
   const [calendar, setCalendar] = useState(ev?.calendar ?? defaultCalendar);
   const [allDay, setAllDay] = useState(draft.allDay);
@@ -39,6 +46,9 @@ export function EventDialog({ draft, calendars, defaultCalendar, onClose, onChan
     const s = parseLocal(start, allDay), e0 = parseLocal(end, allDay);
     if (isNaN(+s) || isNaN(+e0)) return setError("Check the start and end.");
     const e = allDay ? dayAfter(e0) : e0;
+    const attendeeList = attendees.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+    const badAddr = attendeeList.find((a) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a));
+    if (badAddr) return setError(`"${badAddr}" is not a valid email address.`);
     if (allDay ? e <= s : e < s) return setError("The end must be after the start.");
     const recurrence: Recurrence | null | undefined =
       repeat === "keep" ? undefined : repeat === "none" ? null : { freq: repeat as Recurrence["freq"], ...(count ? { count: Math.min(999, Math.max(1, Number(count))) } : {}) };
@@ -46,6 +56,7 @@ export function EventDialog({ draft, calendars, defaultCalendar, onClose, onChan
       calendar, title: title.trim(), allDay, location: location.trim(), description,
       start: allDay ? start : s.toISOString(), end: allDay ? toLocalInput(e, true) : e.toISOString(),
       recurrence, reminderMinutes: reminder === "keep" ? undefined : reminder === "none" ? null : Number(reminder),
+      attendees: attendeeList,
     };
     setBusy(true); setError("");
     try {
@@ -55,6 +66,12 @@ export function EventDialog({ draft, calendars, defaultCalendar, onClose, onChan
     } catch (err) {
       setError(err instanceof ApiError && err.status === 409 ? "Someone changed this event while you had it open. Close and reopen it." : "Could not save the event.");
     } finally { setBusy(false); }
+  }
+
+  async function respond(status: "ACCEPTED" | "TENTATIVE" | "DECLINED") {
+    if (!ev) return;
+    setBusy(true); setError("");
+    try { await api.rsvp({ calendar: ev.calendar, href: ev.href, etag: ev.etag, status }); onChanged(); } catch { setError("Could not send your response."); setBusy(false); }
   }
 
   async function remove() {
@@ -68,21 +85,22 @@ export function EventDialog({ draft, calendars, defaultCalendar, onClose, onChan
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
       <DialogSurface style={{ maxWidth: 520 }}>
         <DialogBody>
-          <DialogTitle>{ev ? "Edit event" : "New event"}</DialogTitle>
+          <DialogTitle>{invitee ? "Meeting invitation" : ev ? "Edit event" : "New event"}</DialogTitle>
           <DialogContent style={{ display: "grid", gap: 10, paddingTop: 8 }}>
+            {invitee && <MessageBar><MessageBarBody>{ev!.organizer} organised this meeting. You are {STATUS[myStatus ?? "NEEDS-ACTION"]}.</MessageBarBody></MessageBar>}
             {error && <MessageBar intent="error"><MessageBarBody>{error}</MessageBarBody></MessageBar>}
-            <Field label="Title"><Input value={title} onChange={(_, d) => setTitle(d.value)} autoFocus /></Field>
+            <Field label="Title"><Input value={title} onChange={(_, d) => setTitle(d.value)} autoFocus readOnly={invitee} /></Field>
             <Field label="Calendar">
               <Select value={calendar} disabled={Boolean(ev)} onChange={(_, d) => setCalendar(d.value)}>
                 {calendars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
-            <Switch label="All day" checked={allDay} onChange={(_, d) => flip(d.checked)} />
+            <Switch label="All day" checked={allDay} onChange={(_, d) => flip(d.checked)} disabled={invitee} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Field label="Starts"><Input type={allDay ? "date" : "datetime-local"} value={start} onChange={(_, d) => setStart(d.value)} /></Field>
-              <Field label="Ends"><Input type={allDay ? "date" : "datetime-local"} value={end} onChange={(_, d) => setEnd(d.value)} /></Field>
+              <Field label="Starts"><Input type={allDay ? "date" : "datetime-local"} value={start} onChange={(_, d) => setStart(d.value)} readOnly={invitee} /></Field>
+              <Field label="Ends"><Input type={allDay ? "date" : "datetime-local"} value={end} onChange={(_, d) => setEnd(d.value)} readOnly={invitee} /></Field>
             </div>
-            <Field label="Location"><Input value={location} onChange={(_, d) => setLocation(d.value)} /></Field>
+            <Field label="Location"><Input value={location} onChange={(_, d) => setLocation(d.value)} readOnly={invitee} /></Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <Field label="Repeat" hint={ev?.recurring ? "Changes apply to the whole series." : undefined}>
                 <Select value={repeat} onChange={(_, d) => setRepeat(d.value)}>
@@ -103,14 +121,30 @@ export function EventDialog({ draft, calendars, defaultCalendar, onClose, onChan
                 <Input type="number" min={1} max={999} value={count} onChange={(_, d) => setCount(d.value)} />
               </Field>
             )}
-            <Field label="Notes"><Textarea rows={3} value={description} onChange={(_, d) => setDescription(d.value)} /></Field>
-            {ev && ev.attendees.length > 0 && <div style={{ fontSize: 13, color: "#605e5c" }}>Attendees: {ev.attendees.map((a) => a.name || a.email).join(", ")}</div>}
+            <Field label="Notes"><Textarea rows={3} value={description} onChange={(_, d) => setDescription(d.value)} readOnly={invitee} /></Field>
+            <Field label="Attendees" hint={invitee ? undefined : "Invitations are emailed when you save. Separate addresses with commas."}>
+              <AddressInput value={attendees} onChange={setAttendees} />
+            </Field>
+            {ev && ev.attendees.length > 0 && (
+              <div style={{ fontSize: 13, color: "#605e5c", display: "grid", gap: 2 }}>
+                {ev.attendees.map((a) => <span key={a.email}>{a.name || a.email}: {STATUS[a.status] ?? a.status.toLowerCase()}</span>)}
+              </div>
+            )}
           </DialogContent>
+          {invitee ? (
+            <DialogActions>
+              <Button onClick={onClose}>Close</Button>
+              <Button appearance="outline" disabled={busy} onClick={() => respond("DECLINED")}>Decline</Button>
+              <Button appearance="outline" disabled={busy} onClick={() => respond("TENTATIVE")}>Tentative</Button>
+              <Button appearance="primary" disabled={busy} onClick={() => respond("ACCEPTED")}>Accept</Button>
+            </DialogActions>
+          ) : (
           <DialogActions>
             {ev && <Button appearance="outline" onClick={remove} disabled={busy} style={{ marginRight: "auto", color: "#c50f1f" }}>Delete</Button>}
             <Button onClick={onClose}>Cancel</Button>
             <Button appearance="primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
           </DialogActions>
+          )}
         </DialogBody>
       </DialogSurface>
     </Dialog>

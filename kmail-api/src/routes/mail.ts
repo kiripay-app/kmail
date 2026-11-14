@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import MailComposer from "nodemailer/lib/mail-composer/index.js";
-import nodemailer from "nodemailer";
 import { simpleParser } from "mailparser";
 import { z } from "zod";
 import { requireAuth } from "../auth.js";
@@ -8,10 +7,18 @@ import { config } from "../config.js";
 import { credentials } from "../session.js";
 import { withImap, withMailbox } from "../imap.js";
 import { cleanHtml } from "../sanitize.js";
+import { caldav } from "../dav.js";
+import { buildReply, parseInvite, setPartstat, withMethod, type PartStat } from "../ical.js";
+import { findByUid, safeName } from "../lookup.js";
+import { sendItip, shouldSendInvites } from "../scheduling.js";
+import { transportFor } from "../smtp.js";
 
 const uidParam = z.coerce.number().int().positive();
 const folderParam = z.string().min(1).max(255);
 
+function ensureOk(r: Response) {
+  if (!r.ok) throw new Error(`DAV ${r.status}`);
+}
 const addr = (a?: { name?: string; address?: string }) => ({ name: a?.name ?? "", address: a?.address ?? "" });
 
 export async function mailRoutes(app: FastifyInstance) {
@@ -94,6 +101,10 @@ export async function mailRoutes(app: FastifyInstance) {
             html = html.split(`cid:${cid}`).join(`data:${a.contentType};base64,${a.content.toString("base64")}`);
           }
         }
+        const isCal = (a: { contentType: string; filename?: string }) => /^text\/calendar/i.test(a.contentType) || /\.ics$/i.test(a.filename ?? "");
+        const calPart = p.attachments.find(isCal);
+        const inv = calPart ? parseInvite(calPart.content.toString("utf8")) : undefined;
+        const me = credentials(req.session!).user.toLowerCase();
         const body = html
           ? cleanHtml(html, q.data.images === "1")
           : { html: cleanHtml(`<pre style="white-space:pre-wrap">${(p.text ?? "").replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[ch]!)}</pre>`, false).html, blockedRemote: false };
@@ -106,9 +117,13 @@ export async function mailRoutes(app: FastifyInstance) {
           date: p.date?.toISOString() ?? null,
           html: body.html,
           blockedRemoteImages: body.blockedRemote,
+          invitation: inv
+            ? { method: inv.method, uid: inv.uid, title: inv.title, start: inv.start, end: inv.end, allDay: inv.allDay, location: inv.location, organizer: inv.organizer,
+                attendeeCount: inv.attendees.length, attendees: inv.attendees, myStatus: inv.attendees.find((a) => a.email.toLowerCase() === me)?.status ?? null }
+            : null,
           attachments: p.attachments
             .map((a, i) => ({ a, i }))
-            .filter(({ a }) => !(a.contentId && a.contentDisposition === "inline"))
+            .filter(({ a }) => !(a.contentId && a.contentDisposition === "inline") && !(inv && isCal(a)))
             .map(({ a, i }) => ({ index: i, filename: a.filename ?? "attachment", size: a.size, contentType: a.contentType })),
         };
       }),
@@ -137,6 +152,73 @@ export async function mailRoutes(app: FastifyInstance) {
           .send(att.content);
       }),
     );
+  });
+
+  // Respond to a meeting invitation found in a message, or apply someone's reply / a cancellation to the calendar.
+  const InviteAct = z.object({ folder: folderParam, action: z.enum(["ACCEPTED", "TENTATIVE", "DECLINED", "APPLY_REPLY", "APPLY_CANCEL"]) });
+  app.post("/api/mail/messages/:uid/invitation", async (req, reply) => {
+    const uid = uidParam.safeParse((req.params as { uid: string }).uid);
+    const b = InviteAct.safeParse(req.body);
+    if (!uid.success || !b.success) return reply.code(400).send({ error: "invalid_input" });
+    const creds = credentials(req.session!);
+
+    const msg = await withImap(creds, (c) => withMailbox(c, b.data.folder, () => c.fetchOne(String(uid.data), { source: true }, { uid: true })));
+    if (!msg || !msg.source) return reply.code(404).send({ error: "not_found" });
+    const parsed = await simpleParser(msg.source);
+    const part = parsed.attachments.find((a) => /^text\/calendar/i.test(a.contentType) || /\.ics$/i.test(a.filename ?? ""));
+    const ics = part?.content.toString("utf8");
+    const inv = ics ? parseInvite(ics) : undefined;
+    if (!ics || !inv) return reply.code(400).send({ error: "no_invitation" });
+    const sender = (parsed.from?.value[0]?.address ?? "").toLowerCase();
+
+    try {
+      const client = await caldav(creds);
+      const calendars = (await client.fetchCalendars()).filter((c) => !c.components || c.components.includes("VEVENT"));
+      if (!calendars.length) return reply.code(404).send({ error: "no_calendar" });
+      const found = await findByUid(client, calendars, inv.uid, new Date(inv.allDay ? `${inv.start}T00:00:00Z` : inv.start));
+      const act = b.data.action;
+
+      if (act === "APPLY_REPLY") {
+        if (inv.method !== "REPLY") return reply.code(400).send({ error: "not_a_reply" });
+        if (!found) return reply.code(404).send({ error: "event_not_in_calendar" });
+        // Only trust a reply that comes from the attendee it speaks for.
+        const mine = inv.attendees.filter((a) => a.email.toLowerCase() === sender);
+        if (!mine.length) return reply.code(403).send({ error: "sender_mismatch" });
+        let data = found.data;
+        for (const a of mine) data = setPartstat(data, a.email, a.status as PartStat);
+        ensureOk(await client.updateCalendarObject({ calendarObject: { url: found.url, data, etag: found.etag } }));
+        return { ok: true };
+      }
+
+      if (act === "APPLY_CANCEL") {
+        if (inv.method !== "CANCEL") return reply.code(400).send({ error: "not_a_cancellation" });
+        if (!found) return reply.code(404).send({ error: "event_not_in_calendar" });
+        const stored = parseInvite(found.data);
+        if (!stored || stored.organizer.email.toLowerCase() !== sender) return reply.code(403).send({ error: "sender_mismatch" });
+        ensureOk(await client.deleteCalendarObject({ calendarObject: { url: found.url, etag: found.etag } }));
+        return { ok: true };
+      }
+
+      // Accept / tentative / decline
+      if (inv.method !== "REQUEST") return reply.code(400).send({ error: "not_a_request" });
+      const status = act as PartStat;
+      let cal = found?.calendar ?? calendars[0];
+      if (found) {
+        ensureOk(await client.updateCalendarObject({ calendarObject: { url: found.url, data: setPartstat(found.data, creds.user, status), etag: found.etag } }));
+      } else if (status !== "DECLINED") {
+        ensureOk(await client.createCalendarObject({ calendar: cal, filename: `${safeName(inv.uid)}.ics`, iCalString: setPartstat(withMethod(ics, null), creds.user, status) }));
+      }
+      let replied = false;
+      if (inv.organizer.email && inv.organizer.email.toLowerCase() !== creds.user.toLowerCase() && (await shouldSendInvites(cal.url, creds))) {
+        const word = { ACCEPTED: "Accepted", TENTATIVE: "Tentative", DECLINED: "Declined" }[status];
+        await sendItip(creds, { method: "REPLY", ics: buildReply(ics, creds.user, status), to: [inv.organizer.email], subject: `${word}: ${inv.title}`, text: `${creds.user} responded "${word.toLowerCase()}" to ${inv.title}.` });
+        replied = true;
+      }
+      return { ok: true, replied };
+    } catch (e) {
+      req.log.error({ err: e }, "invitation action failed");
+      return reply.code(502).send({ error: "calendar_unavailable" });
+    }
   });
 
   const Patch = z.object({
@@ -204,14 +286,7 @@ export async function mailRoutes(app: FastifyInstance) {
       attachments: b.data.attachments.map((a) => ({ filename: a.filename, contentType: a.contentType, content: Buffer.from(a.base64, "base64") })),
     });
     const raw = await mail.compile().build();
-    const transport = nodemailer.createTransport({
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: false,
-      requireTLS: true,
-      auth: { user: creds.user, pass: creds.pass },
-      tls: { rejectUnauthorized: config.smtp.rejectUnauthorized },
-    });
+    const transport = transportFor(creds);
     try {
       await transport.sendMail({ envelope: { from: creds.user, to: [...b.data.to, ...b.data.cc, ...b.data.bcc] }, raw });
     } catch (e) {

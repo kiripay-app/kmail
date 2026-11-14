@@ -51,3 +51,43 @@ test("update without recurrence/reminder keeps the repeat rule and alarm; null r
   assert.doesNotMatch(cleared, /RRULE:/);
   assert.doesNotMatch(cleared, /VALARM/);
 });
+
+import { buildReply, parseInvite, setPartstat, splitByUid, withMethod } from "./ical.js";
+
+test("attendees: organizer set, statuses preserved on edit, removal clears organizer, sequence bumps", () => {
+  const ics = buildNew({ ...timed, attendees: ["bob@example.net", "carol@example.net"] }, "u8@kmail", "me@pub.com.ki");
+  let [o] = expand(ics, ...range("2026-11-01", "2026-12-01"));
+  assert.equal(o.organizer, "me@pub.com.ki");
+  assert.deepEqual(o.attendees.map((a) => [a.email, a.status]), [["bob@example.net", "NEEDS-ACTION"], ["carol@example.net", "NEEDS-ACTION"]]);
+  const replied = setPartstat(ics, "BOB@example.net", "ACCEPTED");
+  const edited = applyUpdate(replied, { ...timed, attendees: ["bob@example.net", "dave@example.net"] }, "me@pub.com.ki");
+  [o] = expand(edited, ...range("2026-11-01", "2026-12-01"));
+  assert.deepEqual(o.attendees.map((a) => [a.email, a.status]), [["bob@example.net", "ACCEPTED"], ["dave@example.net", "NEEDS-ACTION"]]);
+  assert.match(edited, /SEQUENCE:1/);
+  const none = applyUpdate(edited, { ...timed, attendees: [] }, "me@pub.com.ki");
+  assert.doesNotMatch(none, /ATTENDEE|ORGANIZER/);
+  assert.equal(expand(applyUpdate(ics, { ...timed }, "me@pub.com.ki"), ...range("2026-11-01", "2026-12-01"))[0].attendees.length, 2, "undefined attendees keeps them");
+});
+test("invite parse, method handling and REPLY building", () => {
+  const ics = withMethod(buildNew({ ...timed, attendees: ["bob@example.net"] }, "u9@kmail", "me@pub.com.ki"), "REQUEST");
+  const inv = parseInvite(ics)!;
+  assert.deepEqual([inv.method, inv.uid, inv.title, inv.organizer.email, inv.attendees[0].email], ["REQUEST", "u9@kmail", "Standup", "me@pub.com.ki", "bob@example.net"]);
+  assert.doesNotMatch(withMethod(ics, null), /METHOD/);
+  const reply = buildReply(ics, "bob@example.net", "DECLINED");
+  const r = parseInvite(reply)!;
+  assert.deepEqual([r.method, r.uid, r.attendees.length, r.attendees[0].status, r.organizer.email], ["REPLY", "u9@kmail", 1, "DECLINED", "me@pub.com.ki"]);
+});
+test("setPartstat adds an invitee who was invited under another address", () => {
+  const ics = buildNew({ ...timed, attendees: ["bob@example.net"] }, "u10@kmail", "me@pub.com.ki");
+  assert.deepEqual(parseInvite(setPartstat(ics, "alias@example.net", "TENTATIVE"))!.attendees.map((a) => a.status), ["NEEDS-ACTION", "TENTATIVE"]);
+});
+test("import splitting groups a series with its exceptions and keeps time zones", () => {
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:x",
+    "BEGIN:VEVENT", "UID:a", "DTSTART:20261116T100000Z", "DTEND:20261116T110000Z", "RRULE:FREQ=DAILY;COUNT=3", "SUMMARY:A", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:a", "RECURRENCE-ID:20261117T100000Z", "DTSTART:20261117T120000Z", "DTEND:20261117T130000Z", "SUMMARY:A moved", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:b", "DTSTART;VALUE=DATE:20261201", "SUMMARY:B", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const parts = splitByUid(ics);
+  assert.deepEqual(parts.map((p) => p.uid), ["a", "b"]);
+  const occ = expand(parts[0].data, ...range("2026-11-01", "2026-12-01"));
+  assert.deepEqual(occ.map((o) => [o.start.slice(0, 13), o.title]), [["2026-11-16T10", "A"], ["2026-11-17T12", "A moved"], ["2026-11-18T10", "A"]]);
+});

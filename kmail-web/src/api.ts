@@ -25,7 +25,13 @@ export interface Folder { path: string; name: string; specialUse: string | null;
 export interface MsgSummary { uid: number; subject: string; from: Addr; date: string | null; seen: boolean; flagged: boolean }
 export interface MsgList { total: number; page: number; pageSize: number; messages: MsgSummary[] }
 export interface Attachment { index: number; filename: string; size: number; contentType: string }
+export interface Invitation {
+  method: string; uid: string; title: string; start: string; end: string; allDay: boolean; location: string;
+  organizer: { name: string; email: string }; attendeeCount: number; attendees: { email: string; name: string; status: string }[]; myStatus: string | null;
+}
+export type InviteAction = "ACCEPTED" | "TENTATIVE" | "DECLINED" | "APPLY_REPLY" | "APPLY_CANCEL";
 export interface MsgDetail {
+  invitation: Invitation | null;
   uid: number; subject: string; from: Addr[]; to: Addr[]; cc: Addr[]; date: string | null;
   html: string; blockedRemoteImages: boolean; attachments: Attachment[];
 }
@@ -38,17 +44,18 @@ export interface Cal { id: string; name: string; color: string | null }
 export interface Recurrence { freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"; interval?: number; count?: number; until?: string }
 export interface CalEvent {
   id: string; uid: string; title: string; start: string; end: string; allDay: boolean; location: string; description: string;
-  recurring: boolean; attendees: { email: string; name: string; status: string }[]; calendar: string; href: string; etag: string;
+  recurring: boolean; organizer: string; attendees: { email: string; name: string; status: string }[]; calendar: string; href: string; etag: string;
 }
 // recurrence / reminderMinutes: undefined = leave as is (updates), null = remove, value = set.
 export interface EventInput {
   calendar: string; title: string; start: string; end: string; allDay: boolean; location?: string; description?: string;
-  recurrence?: Recurrence | null; reminderMinutes?: number | null;
+  recurrence?: Recurrence | null; reminderMinutes?: number | null; attendees?: string[]; // undefined = unchanged
 }
 export interface Book { id: string; name: string }
 export interface ContactInput { book: string; firstName?: string; lastName?: string; emails: string[]; phones: string[]; org?: string; notes?: string }
 export interface Contact { id: string; href: string; etag: string; book: string; uid: string; name: string; firstName: string; lastName: string; emails: string[]; phones: string[]; org: string; notes: string }
 
+const q2 = (o: Record<string, string>) => new URLSearchParams(o).toString();
 const q = (o: Record<string, string | number | undefined>) =>
   new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
 
@@ -74,5 +81,11 @@ export const api = {
   createContact: (c: ContactInput) => call<{ ok: boolean }>("/contacts", { method: "POST", json: c }),
   updateContact: (c: ContactInput & { href: string; etag: string }) => call<{ ok: boolean }>("/contacts", { method: "PUT", json: c }),
   deleteContact: (book: string, href: string, etag: string) => call<{ ok: boolean }>(`/contacts?${q({ book, href, etag })}`, { method: "DELETE" }),
+  respondInvitation: (folder: string, uid: number, action: InviteAction) =>
+    call<{ ok: boolean; replied?: boolean }>(`/mail/messages/${uid}/invitation`, { method: "POST", json: { folder, action } }),
+  rsvp: (i: { calendar: string; href: string; etag: string; status: "ACCEPTED" | "TENTATIVE" | "DECLINED" }) => call<{ ok: boolean }>("/calendar/events/rsvp", { method: "PUT", json: i }),
+  importIcs: (calendar: string, ics: string) => call<{ imported: number; skipped: number; failed: number }>("/calendar/import", { method: "POST", json: { calendar, ics } }),
+  importVcf: (book: string, vcf: string) => call<{ imported: number; skipped: number; failed: number }>("/contacts/import", { method: "POST", json: { book, vcf } }),
+  suggest: (q: string) => call<{ name: string; email: string }[]>(`/contacts/suggest?${q2({ q })}`),
   attachmentUrl: (folder: string, uid: number, index: number) => `${BASE}/mail/messages/${uid}/attachments/${index}?${q({ folder })}`,
 };

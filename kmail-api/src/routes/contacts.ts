@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth.js";
 import { belongsTo, carddav, davStatus, pickCollection } from "../dav.js";
 import { credentials } from "../session.js";
-import { buildCard, parseCard, updateCard } from "../vcard.js";
+import { buildCard, parseCard, splitCards, updateCard } from "../vcard.js";
 
 const Body = z.object({
   book: z.string().url(),
@@ -65,6 +65,58 @@ export async function contactRoutes(app: FastifyInstance) {
       return { contacts: hit.slice(0, 2000), total: hit.length };
     } catch (e) {
       req.log.error({ err: e }, "contacts failed");
+      return fail(reply, e);
+    }
+  });
+
+  // Address suggestions while typing a recipient. The address-book fetch is cached for a minute per session.
+  const suggestCache = new Map<string, { at: number; people: { name: string; email: string }[] }>();
+  app.get("/api/contacts/suggest", async (req, reply) => {
+    const q = z.object({ q: z.string().trim().min(1).max(100) }).safeParse(req.query);
+    if (!q.success) return [];
+    try {
+      const sid = req.session!.id;
+      let hit = suggestCache.get(sid);
+      if (!hit || Date.now() - hit.at > 60_000) {
+        const { client, books } = await open(req);
+        const people = (await Promise.all(books.map((b) => client.fetchVCards({ addressBook: b }))))
+          .flat()
+          .flatMap((v) => { const c = typeof v.data === "string" ? parseCard(v.data) : undefined; return c ? c.emails.map((email) => ({ name: c.name, email })) : []; });
+        hit = { at: Date.now(), people };
+        suggestCache.set(sid, hit);
+        if (suggestCache.size > 500) suggestCache.delete(suggestCache.keys().next().value!);
+      }
+      const n = q.data.q.toLowerCase();
+      return hit.people.filter((p) => p.name.toLowerCase().includes(n) || p.email.toLowerCase().includes(n)).slice(0, 8);
+    } catch (e) {
+      req.log.warn({ err: e }, "suggest failed");
+      return reply.code(200).send([]);
+    }
+  });
+
+  // Import a .vcf export. Contacts that already exist are skipped, never overwritten.
+  app.post("/api/contacts/import", { bodyLimit: 12 * 1024 * 1024 }, async (req, reply) => {
+    const b = z.object({ book: z.string().url(), vcf: z.string().min(20).max(10 * 1024 * 1024) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: "invalid_input" });
+    const cards = splitCards(b.data.vcf);
+    if (!cards.length) return reply.code(400).send({ error: "no_contacts" });
+    if (cards.length > 5000) return reply.code(400).send({ error: "too_many_contacts" });
+    try {
+      const { client, books } = await open(req);
+      const book = pickCollection(books, b.data.book);
+      if (!book) return reply.code(404).send({ error: "book_not_found" });
+      let imported = 0, skipped = 0, failed = 0;
+      for (let i = 0; i < cards.length; i += 5) {
+        await Promise.all(cards.slice(i, i + 5).map(async (c) => {
+          try {
+            const r = await client.createVCard({ addressBook: book, filename: `${c.uid.replace(/[^A-Za-z0-9@._-]/g, "_").slice(0, 120)}.vcf`, vCardString: c.data });
+            if (r.ok) imported++; else if (r.status === 412 || r.status === 409) skipped++; else failed++;
+          } catch { failed++; }
+        }));
+      }
+      return { imported, skipped, failed };
+    } catch (e) {
+      req.log.error({ err: e }, "contact import failed");
       return fail(reply, e);
     }
   });

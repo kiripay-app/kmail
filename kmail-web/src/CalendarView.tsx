@@ -6,18 +6,20 @@ import interactionPlugin from "@fullcalendar/interaction";
 import type { EventDropArg, EventInput as FcEvent } from "@fullcalendar/core";
 import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import { Button, Checkbox, MessageBar, MessageBarBody, Spinner } from "@fluentui/react-components";
-import { CalendarAdd24Regular } from "@fluentui/react-icons";
-import { api, AuthError, Cal, CalEvent } from "./api";
+import { CalendarAdd24Regular, ArrowUpload24Regular } from "@fluentui/react-icons";
+import { api, ApiError, AuthError, Cal, CalEvent } from "./api";
 import { Draft, EventDialog } from "./EventDialog";
 
 const PALETTE = ["#0f6cbd", "#107c10", "#8764b8", "#c239b3", "#ca5010", "#038387", "#986f0b"];
 const colorOf = (cals: Cal[], id: string) => cals.find((c) => c.id === id)?.color || PALETTE[Math.max(0, cals.findIndex((c) => c.id === id)) % PALETTE.length];
 
-export function CalendarView({ onSignedOut }: { onSignedOut: () => void }) {
+export function CalendarView({ me, onSignedOut }: { me: string; onSignedOut: () => void }) {
   const [cals, setCals] = useState<Cal[] | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
   const fc = useRef<FullCalendar>(null);
   const calsRef = useRef<Cal[]>([]);
   const hiddenRef = useRef(hidden);
@@ -52,6 +54,18 @@ export function CalendarView({ onSignedOut }: { onSignedOut: () => void }) {
     } catch (err) { arg.revert(); fail(err, "Could not move the event."); }
   }
 
+  async function importFile(file: File) {
+    const target = cals?.find((c) => !hidden.has(c.id)) ?? cals?.[0];
+    if (!target) return;
+    if (file.size > 10 * 1024 * 1024) return setError("That file is over 10 MB.");
+    setNote(""); setError("");
+    try {
+      const r = await api.importIcs(target.id, await file.text());
+      setNote(`Imported ${r.imported} event${r.imported === 1 ? "" : "s"} into ${target.name}${r.skipped ? `, ${r.skipped} already there` : ""}${r.failed ? `, ${r.failed} failed` : ""}.`);
+      refetch();
+    } catch (e) { fail(e, e instanceof ApiError && e.code === "invalid_ics" ? "That does not look like a calendar (.ics) file." : "Could not import the file."); }
+  }
+
   if (!cals) return <div style={{ padding: 24 }}><Spinner /></div>;
   const open = (start: Date, end: Date, allDay: boolean) => setDraft({ start, end, allDay });
 
@@ -69,6 +83,11 @@ export function CalendarView({ onSignedOut }: { onSignedOut: () => void }) {
             </div>
           ))}
         </div>
+        <div>
+          <input ref={importInput} type="file" accept=".ics,text/calendar" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importFile(f); }} />
+          <Button appearance="subtle" icon={<ArrowUpload24Regular />} disabled={!cals.length} onClick={() => importInput.current?.click()}>Import .ics file</Button>
+          {note && <div role="status" style={{ fontSize: 13, color: "#107c10", marginTop: 6 }}>{note}</div>}
+        </div>
       </aside>
       <section style={{ padding: "8px 12px", minHeight: 0, display: "grid", gridTemplateRows: "auto 1fr" }}>
         {error ? <MessageBar intent="warning"><MessageBarBody>{error}</MessageBarBody></MessageBar> : <div />}
@@ -83,7 +102,7 @@ export function CalendarView({ onSignedOut }: { onSignedOut: () => void }) {
           eventDrop={moved} eventResize={moved}
         />
       </section>
-      {draft && <EventDialog draft={draft} calendars={cals} defaultCalendar={cals[0]?.id ?? ""} onClose={() => setDraft(null)} onChanged={() => { setDraft(null); refetch(); }} />}
+      {draft && <EventDialog draft={draft} me={me} calendars={cals} defaultCalendar={cals[0]?.id ?? ""} onClose={() => setDraft(null)} onChanged={() => { setDraft(null); refetch(); }} />}
     </div>
   );
 }
