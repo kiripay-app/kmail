@@ -1,66 +1,44 @@
-# mailcow: dockerized - 🐮 + 🐋 = 💕
+# KMail
 
-[![Translation status](https://translate.mailcow.email/widgets/mailcow-dockerized/-/translation/svg-badge.svg)](https://translate.mailcow.email/engage/mailcow-dockerized/)
-[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/mailcow_email.svg?style=social&label=Follow%20%40mailcow_email)](https://twitter.com/mailcow_email)
-![Mastodon Follow](https://img.shields.io/mastodon/follow/109388212176073348?domain=https%3A%2F%2Fmailcow.social&label=Follow%20%40doncow%40mailcow.social&link=https%3A%2F%2Fmailcow.social%2F%40doncow)
+KMail is a GPLv3 fork of [mailcow: dockerized](https://github.com/mailcow/mailcow-dockerized) that
+replaces the SOGo web interface with an Outlook-style webmail and calendar, plus an admin panel
+protected by two-factor authentication.
 
+> **Status: early scaffolding (phase 1).** The mail core is unmodified mailcow. The KMail webmail,
+> API and admin panel are starter projects only and not ready for production use.
 
-## Want to support mailcow?
+## What is different from mailcow
 
-Please [consider a support contract with Servercow](https://www.servercow.de/mailcow?lang=en#support) to support further development. _We_ support _you_ while _you_ support _us_. :)
+| Area | mailcow | KMail |
+| --- | --- | --- |
+| Mail core (Postfix, Dovecot, Rspamd, ClamAV) | yes | inherited, unchanged |
+| Webmail UI | SOGo | `kmail-web` (React + Fluent UI, Outlook-style layout) |
+| Calendar / contacts backend | SOGo | SOGo kept headless at first (CalDAV/CardDAV/ActiveSync) |
+| Admin panel | mailcow UI | `kmail-admin`, TOTP + WebAuthn 2FA, audit log |
+| Orchestration | Docker Compose | Docker Compose, Helm chart for stateless services later |
 
-You can also [get a SAL](https://www.servercow.de/mailcow?lang=en#sal) which is a one-time payment with no liabilities or returning fees.
+See [docs/PLAN.md](docs/PLAN.md) for the full plan and phases.
 
-Or just spread the word: moo.
+## Layout
 
-## Many thanks to our GitHub Sponsors ❤️
-A big thank you to everyone supporting us on GitHub Sponsors—your contributions mean the world to us! Special thanks to the following amazing supporters:
+- `kmail-web/` frontend (Vite, React, TypeScript)
+- `kmail-api/` backend (Node, TypeScript, Fastify): IMAP/SMTP/CalDAV bridge
+- `kmail-admin/` admin panel (2FA)
+- `docker-compose.override.yml` adds the KMail services to the mailcow stack
+- everything else is upstream mailcow, kept mergeable (`git remote add upstream https://github.com/mailcow/mailcow-dockerized`)
 
-### 100$/Month Sponsors
-  <a href="https://www.colba.net/" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/204464723" height="58"
-  /></a>
-  <a href="https://www.maehdros.com/" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/173894712" height="58"
-  /></a>
-  <a href="https://garske-systems.de/" target=_blank><img
-    src="https://garske-systems.de/img/logo_min.png" height="58"
-  /></a>
+## Install (test VM only)
 
-### 50$/Month Sponsors
-  <a href="https://github.com/vnukhr" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/7805987?s=52&v=4" height="58"
-  /></a><a href="https://github.com/humiico" target=_blank><img
-    src="https://avatars.githubusercontent.com/u/110134705?s=52&v=4" height="58"
-  /></a>
+Follow the upstream mailcow install steps (`./generate_config.sh`, `docker compose pull`,
+`docker compose up -d`); the override file is picked up automatically.
+Do not run this on a production mail server yet.
 
-## Info, documentation and support
+## Licence and attribution
 
-Please see [the official documentation](https://docs.mailcow.email/) for installation and support instructions. 🐄
+KMail is released under the **GNU General Public License v3**, the same licence as mailcow. See `LICENSE`.
+Based on mailcow: dockerized by The Infrastructure Company GmbH and contributors.
+"mailcow" is a registered word mark of The Infrastructure Company GmbH; KMail is an independent
+fork and is not affiliated with or endorsed by them. The Outlook-style layout is original work
+and does not use Microsoft logos, icons or trademarks. Fluent UI is MIT licensed.
 
-🐛 **If you found a critical security issue, please mail us to [info at servercow.de](mailto:info@servercow.de).**
-
-## Cowmunity
-
-[mailcow community](https://community.mailcow.email)
-
-[Telegram mailcow channel](https://telegram.me/mailcow)
-
-[Telegram mailcow Off-Topic channel](https://t.me/mailcowOfftopic)
-
-[Official 𝕏 (Twitter) Account](https://twitter.com/mailcow_email)
-
-[Official Mastodon Account](https://mailcow.social/@doncow)
-
-Telegram desktop clients are available for [multiple platforms](https://desktop.telegram.org). You can search the groups history for keywords.
-
-## Misc
-
-**Important**: mailcow makes use of various open-source software. Please assure you agree with their license before using mailcow.
-Any part of mailcow itself is released under **GNU General Public License, Version 3**.
-
-mailcow is a registered word mark of The Infrastructure Company GmbH, Parkstr. 42, 47877 Willich, Germany.
-
-The project is managed and maintained by The Infrastructure Company GmbH.
-
-Originated from @andryyy (André)
+Maintainer: Karotu (Public Utilities Board, Kiribati).
