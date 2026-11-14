@@ -1,0 +1,24 @@
+# KMail routing. Included inside mailcow's server block (sites-default.conf.j2: include site.*.custom).
+# Uses variables + resolver so nginx still starts if the KMail containers are down
+# (a plain proxy_pass to an unresolvable host would stop mailcow's nginx from booting).
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+location = /kmail { return 301 /kmail/; }
+
+location /kmail/api/ {
+    set $kmail_api http://kmail-api:3000;
+    rewrite ^/kmail/api/(.*)$ /api/$1 break;
+    proxy_pass $kmail_api;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /kmail/ {
+    set $kmail_web http://kmail-web:80;
+    rewrite ^/kmail/(.*)$ /$1 break;
+    proxy_pass $kmail_web;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
