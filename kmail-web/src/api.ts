@@ -34,6 +34,21 @@ export interface SendBody {
   attachments: { filename: string; contentType?: string; base64: string }[];
 }
 
+export interface Cal { id: string; name: string; color: string | null }
+export interface Recurrence { freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"; interval?: number; count?: number; until?: string }
+export interface CalEvent {
+  id: string; uid: string; title: string; start: string; end: string; allDay: boolean; location: string; description: string;
+  recurring: boolean; attendees: { email: string; name: string; status: string }[]; calendar: string; href: string; etag: string;
+}
+// recurrence / reminderMinutes: undefined = leave as is (updates), null = remove, value = set.
+export interface EventInput {
+  calendar: string; title: string; start: string; end: string; allDay: boolean; location?: string; description?: string;
+  recurrence?: Recurrence | null; reminderMinutes?: number | null;
+}
+export interface Book { id: string; name: string }
+export interface ContactInput { book: string; firstName?: string; lastName?: string; emails: string[]; phones: string[]; org?: string; notes?: string }
+export interface Contact { id: string; href: string; etag: string; book: string; uid: string; name: string; firstName: string; lastName: string; emails: string[]; phones: string[]; org: string; notes: string }
+
 const q = (o: Record<string, string | number | undefined>) =>
   new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
 
@@ -48,5 +63,16 @@ export const api = {
     call<{ ok: boolean }>(`/mail/messages/${uid}`, { method: "PATCH", json: { folder, ...body } }),
   remove: (folder: string, uid: number) => call<{ ok: boolean }>(`/mail/messages/${uid}?${q({ folder })}`, { method: "DELETE" }),
   send: (b: SendBody) => call<{ ok: boolean }>("/mail/send", { method: "POST", json: b }),
+  calendars: () => call<Cal[]>("/calendar/calendars"),
+  events: (start: string, end: string, calendars: string[]) =>
+    call<{ events: CalEvent[]; failed: string[] }>(`/calendar/events?${q({ start, end, calendars: calendars.join(",") })}`),
+  createEvent: (i: EventInput) => call<{ ok: boolean }>("/calendar/events", { method: "POST", json: i }),
+  updateEvent: (i: EventInput & { href: string; etag: string }) => call<{ ok: boolean }>("/calendar/events", { method: "PUT", json: i }),
+  deleteEvent: (calendar: string, href: string, etag: string) => call<{ ok: boolean }>(`/calendar/events?${q({ calendar, href, etag })}`, { method: "DELETE" }),
+  books: () => call<Book[]>("/contacts/books"),
+  contacts: (search?: string) => call<{ contacts: Contact[]; total: number }>(`/contacts?${q({ q: search || undefined })}`),
+  createContact: (c: ContactInput) => call<{ ok: boolean }>("/contacts", { method: "POST", json: c }),
+  updateContact: (c: ContactInput & { href: string; etag: string }) => call<{ ok: boolean }>("/contacts", { method: "PUT", json: c }),
+  deleteContact: (book: string, href: string, etag: string) => call<{ ok: boolean }>(`/contacts?${q({ book, href, etag })}`, { method: "DELETE" }),
   attachmentUrl: (folder: string, uid: number, index: number) => `${BASE}/mail/messages/${uid}/attachments/${index}?${q({ folder })}`,
 };

@@ -16,6 +16,11 @@ export const config = {
     port: Number(process.env.SMTP_PORT ?? 587),
     rejectUnauthorized: bool(process.env.SMTP_TLS_REJECT_UNAUTHORIZED, false),
   },
+  dav: {
+    // mailcow's SOGo serves CalDAV and CardDAV from the same place and authenticates mailbox users itself.
+    caldavUrl: process.env.CALDAV_URL ?? "http://sogo:20000/SOGo/dav/",
+    carddavUrl: process.env.CARDDAV_URL ?? process.env.CALDAV_URL ?? "http://sogo:20000/SOGo/dav/",
+  },
   cookieSecure: bool(process.env.COOKIE_SECURE, true),
   sessionTtlMs: Number(process.env.SESSION_TTL_MINUTES ?? 480) * 60_000,
   pageSize: 50,

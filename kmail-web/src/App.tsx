@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Button, Spinner, Tab, TabList, Text } from "@fluentui/react-components";
 import { api } from "./api";
 import { Login } from "./Login";
+import { CalendarView } from "./CalendarView";
+import { ContactsView } from "./ContactsView";
 import { MailView } from "./MailView";
 
 type View = "mail" | "calendar" | "contacts";
@@ -26,7 +28,9 @@ export function App() {
         <Text style={{ color: "#fff" }}>{email}</Text>
         <Button appearance="outline" size="small" style={{ color: "#fff", borderColor: "#fff" }} onClick={() => api.logout().finally(() => setEmail(null))}>Sign out</Button>
       </header>
-      {view === "mail" ? <MailView email={email} onSignedOut={() => setEmail(null)} /> : <main style={{ padding: 24 }}><Text size={500} style={{ textTransform: "capitalize" }}>{view}</Text><p>Coming in phase 3.</p></main>}
+      {view === "mail" && <MailView email={email} onSignedOut={() => setEmail(null)} />}
+      {view === "calendar" && <CalendarView onSignedOut={() => setEmail(null)} />}
+      {view === "contacts" && <ContactsView onSignedOut={() => setEmail(null)} />}
     </div>
   );
 }

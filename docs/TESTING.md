@@ -9,9 +9,15 @@
 
 ## What has and has not been tested
 
-Tested against a stock Dovecot 2.3 and a local SMTP server (plain IMAP, not the mailcow containers): login, folders, list, search,
-read, sanitising, attachments, flag, move, delete, send with attachment, Sent copy, and the browser UI end to end.
+Tested against a stock Dovecot 2.3, a local SMTP server and Radicale (a standards-based CalDAV/CardDAV server standing in for SOGo), not the
+mailcow containers: login, folders, list, search, read, sanitising, attachments, flag, move, delete, send with attachment, Sent copy;
+calendar create/edit/delete with repeating events, contacts create/search/edit/delete; and the browser UI end to end.
 
-Not yet tested: the Docker images, the nginx routing, mailcow's own Dovecot/Postfix (TLS on 993/587), large attachments
+Not yet tested: SOGo itself (its discovery and login over CalDAV/CardDAV on port 20000), the Docker images, the nginx routing, mailcow's own Dovecot/Postfix (TLS on 993/587), large attachments
 (attachments travel as base64 JSON, so about 33% larger than the file; mailcow's `NGINX_MAX_BODY_SIZE` applies), and `resolver 127.0.0.11`
 inside mailcow's nginx. If any of those misbehave, the first run's error output is the fastest way to a fix.
+
+## Calendar and contacts check
+
+Sign in, open Calendar, and create an event. Then open the same account in a phone calendar app or SOGo's own page (`/SOGo`) and confirm it appears there too.
+If the Calendar tab says it could not load your calendars, check `docker compose logs kmail-api` for the DAV status and confirm `CALDAV_URL` points at SOGo.

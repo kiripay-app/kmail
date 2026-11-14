@@ -4,7 +4,7 @@ KMail is a GPLv3 fork of [mailcow: dockerized](https://github.com/mailcow/mailco
 replaces the SOGo web interface with an Outlook-style webmail and calendar, plus an admin panel
 protected by two-factor authentication.
 
-> **Status: phase 2 (webmail MVP), early and untested on a real mailcow stack.** The mail core is unmodified mailcow. KMail webmail (login, folders, list, search, read, reply, forward, send with attachments, flag, move, delete) and its API work against a stock Dovecot; calendar, contacts and the admin panel are not built yet.
+> **Status: phase 3 (calendar and contacts), early and untested on a real mailcow stack.** The mail core is unmodified mailcow. KMail's webmail, calendar (day, week, month, repeating events, reminders) and contacts work against stock Dovecot and a standards-based CalDAV server; SOGo stays as the headless calendar/contacts/ActiveSync backend so phones keep syncing. Invitations, shared calendars, the Carbonio import and the admin panel are not built yet.
 
 ## What is different from mailcow
 
@@ -12,7 +12,7 @@ protected by two-factor authentication.
 | --- | --- | --- |
 | Mail core (Postfix, Dovecot, Rspamd, ClamAV) | yes | inherited, unchanged |
 | Webmail UI | SOGo | `kmail-web` (React + Fluent UI, Outlook-style layout) |
-| Calendar / contacts backend | SOGo | SOGo kept headless at first (CalDAV/CardDAV/ActiveSync) |
+| Calendar / contacts | SOGo UI | `kmail-web` screens over CalDAV/CardDAV; SOGo kept headless (also serves ActiveSync for phones) |
 | Admin panel | mailcow UI | `kmail-admin`, TOTP + WebAuthn 2FA, audit log |
 | Orchestration | Docker Compose | Docker Compose, Helm chart for stateless services later |
 

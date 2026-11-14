@@ -3,6 +3,8 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { config } from "./config.js";
 import { authRoutes } from "./routes/auth.js";
+import { calendarRoutes } from "./routes/calendar.js";
+import { contactRoutes } from "./routes/contacts.js";
 import { mailRoutes } from "./routes/mail.js";
 
 const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 1024 * 1024 });
@@ -23,6 +25,8 @@ await app.register(rateLimit, { global: false });
 app.get("/api/health", async () => ({ status: "ok", service: "kmail-api" }));
 await app.register(authRoutes);
 await app.register(mailRoutes);
+await app.register(calendarRoutes);
+await app.register(contactRoutes);
 
 app.addHook("onSend", async (_req, reply) => {
   reply.header("cache-control", "no-store");
