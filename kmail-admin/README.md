@@ -25,6 +25,8 @@ docker compose exec kmail-admin node dist/cli.js create-admin karotu
 Prints a temporary password. Other commands: `list`, and `reset-admin <name>` (new temporary password and clears 2FA, for a lost phone with no recovery codes).
 Run these only from the server shell: that is the root of trust.
 
+Bulk import for migrations (see `docs/MIGRATION.md`): `import-mailboxes [--quota MB] [--dry] < accounts.txt > passwords.csv` and `import-aliases [--dry] < aliases.csv`.
+
 ## Talking to the mail server
 
 All mail changes go through one small interface (`src/adapters/types.ts`). Included:
@@ -42,4 +44,4 @@ Another mail server means one more file in `src/adapters/`.
 
 ## Develop
 
-`npm install && npm test` (23 tests), `npm run build`, `npm run build:ui`. Needs Node 22+ (uses the built-in `node:sqlite`).
+`npm install && npm test` (26 tests), `npm run build`, `npm run build:ui`. Needs Node 22+ (uses the built-in `node:sqlite`).

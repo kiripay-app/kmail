@@ -23,6 +23,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the full plan and phases.
 - `kmail-web/` frontend (Vite, React, TypeScript)
 - `kmail-api/` backend (Node, TypeScript, Fastify): IMAP/SMTP/CalDAV bridge
 - `kmail-admin/` admin panel (Node, Fastify, SQLite, React): see its README
+- `migration/` scripts to move mail, calendars and contacts from Carbonio (guide: [docs/MIGRATION.md](docs/MIGRATION.md))
 - `docker-compose.override.yml` adds the KMail services to the mailcow stack
 - everything else is upstream mailcow, kept mergeable (`git remote add upstream https://github.com/mailcow/mailcow-dockerized`)
 
