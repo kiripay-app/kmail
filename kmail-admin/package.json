@@ -1,2 +1,28 @@
-{ "name": "kmail-admin", "private": true, "version": "0.0.1",
-  "scripts": { "build": "echo 'kmail-admin: nothing to build yet (phase 4)'" } }
+{
+  "name": "kmail-admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --disable-warning=ExperimentalWarning dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "cli": "node --disable-warning=ExperimentalWarning dist/cli.js",
+    "test": "tsx --disable-warning=ExperimentalWarning --test src/*.test.ts",
+    "build:ui": "cd ui && npm install && npm run build"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9.4.0",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/static": "^7.0.4",
+    "fastify": "^4.28.0",
+    "qrcode": "^1.5.4",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.5",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
